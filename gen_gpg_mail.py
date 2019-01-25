@@ -30,25 +30,29 @@ def _build_mail_to_encrypt(options: Values) -> MIMEMultipart:
     :return:
     """
     mail_to_encrypt = MIMEMultipart()
-    mail_to_encrypt.attach(MIMEText(options.message))
+    if options.message == '--':
+        mail_to_encrypt.attach(MIMEText(sys.stdin.read()))
+    else:
+        mail_to_encrypt.attach(MIMEText(options.message))
 
-    attachment_file = options.send_file
-    path = Path(attachment_file)
+    if options.send_file:
+        for file in options.send_file:
+            path = Path(file)
 
-    guessed_type = mimetypes.guess_type(path.absolute().as_uri())[0]
+            guessed_type = mimetypes.guess_type(path.absolute().as_uri())[0]
 
-    if not guessed_type:
-        print('Could not guess file mime-type, using application/octet-stream.', file=sys.stderr)
-        guessed_type = 'application/octet-stream'
+            if not guessed_type:
+                print('Could not guess file %s mime-type, using application/octet-stream.' % file, file=sys.stderr)
+                guessed_type = 'application/octet-stream'
 
-    mimetype = guessed_type.split('/')
+            mimetype = guessed_type.split('/')
 
-    mail_attachment = MIMEBase(mimetype[0], mimetype[1])
-    mail_attachment.set_payload(open(str(path.absolute()), 'rb').read())
-    encoders.encode_base64(mail_attachment)
-    mail_attachment.add_header('Content-Disposition', "attachment; filename= %s" % path.name)
+            mail_attachment = MIMEBase(mimetype[0], mimetype[1])
+            mail_attachment.set_payload(open(str(path.absolute()), 'rb').read())
+            encoders.encode_base64(mail_attachment)
+            mail_attachment.add_header('Content-Disposition', "attachment; filename= %s" % path.name)
 
-    mail_to_encrypt.attach(mail_attachment)
+            mail_to_encrypt.attach(mail_attachment)
 
     return mail_to_encrypt
 
@@ -60,10 +64,6 @@ def sendmail(options: Values) -> None:
     :return:
     """
     gpg = gnupg.GPG(gnupghome=options.gpgenv)
-
-    if not options.email_to:
-        print('Recipient is mandatory.', file=sys.stderr)
-        sys.exit(1)
 
     mail_to_encrypt = _build_mail_to_encrypt(options)
 
@@ -100,9 +100,9 @@ def import_key(options: Values) -> None:
 
 def list_keys(options: Values) -> None:
     """
-
-    :param options:
-    :return:
+    List all keys currently available in the GnuPG environment defined by the options.gpgenv parameter.
+    :param options: A Values containing the options.gpgenv attribute.
+    :return: None
     """
     gpg = gnupg.GPG(gnupghome=options.gpgenv)
     for key in gpg.list_keys():
@@ -114,10 +114,11 @@ def list_keys(options: Values) -> None:
 
 def main():
     """
-
+    Main method. Define the usable arguments of the script and select the right action to launch.
+    The order of precedence is -l, -i, then -d.
     :return:
     """
-    parser = OptionParser()
+    parser = OptionParser(description="Generate an encrypted email using GPG.")
 
     parser.add_option('-e', '--env',
                       dest='gpgenv',
@@ -130,24 +131,26 @@ def main():
     parser.add_option('-i', '--import',
                       dest='import_key',
                       help='The public key file to import in the gnupg environment.')
-    parser.add_option('-f', '--send', '--file',
-                      dest='send_file',
-                      help='The file to add as an attachment.')
     parser.add_option('-d', '--dest', '--email-to',
                       dest='email_to',
                       help='The recipient to encrypt for, can use key identifier.')
+
+    parser.add_option('-f', '--send', '--file',
+                      dest='send_file',
+                      action="append",
+                      help='The file to add as an attachment. Can be provided multiple times to add multiple files.')
     parser.add_option('-s', '--subject',
                       dest='subject',
                       default='No subject',
                       help='The email subject. (%default)')
     parser.add_option('-m', '--message',
                       dest='message',
-                      default='',
-                      help='The text message. (%default)')
+                      default='--',
+                      help='The text message to send. If not provided or equals --, read standard input. (%default)')
     parser.add_option('-t', '--trust',
                       dest='trust',
                       action='store_true',
-                      help='Trust recipient key, regardless of actuel trust level.')
+                      help='Trust recipient key, regardless of actual trust level.')
 
     (options, args) = parser.parse_args()
 
@@ -155,7 +158,7 @@ def main():
         list_keys(options)
     elif options.import_key:
         import_key(options)
-    elif options.send_file:
+    elif options.email_to:
         sendmail(options)
     else:
         parser.print_help()

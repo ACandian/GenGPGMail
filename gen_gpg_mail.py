@@ -12,11 +12,10 @@ With pip, python-gnupg (use with version 0.4.3).
 
 import mimetypes
 import sys
-from email import encoders
+from email import encoders, policy
 from email.mime.application import MIMEApplication
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from optparse import OptionParser, Values
 from pathlib import Path
 
@@ -39,10 +38,15 @@ def _build_mail_to_encrypt(message: str, files: list) -> MIMEMultipart:
     :return: A MIMEMultipart mail object.
     """
     mail_to_encrypt = MIMEMultipart()
+    mail_to_encrypt.policy = policy.SMTPUTF8
     if message == '--':
-        mail_to_encrypt.attach(MIMEText(sys.stdin.read()))
-    else:
-        mail_to_encrypt.attach(MIMEText(message))
+        message = sys.stdin.read()
+
+    message_mail = MIMEBase('text', 'plain', charset='UTF-8')
+    message_mail.policy = policy.SMTPUTF8
+    message_mail.set_payload(message.encode('UTF-8'))
+    encoders.encode_quopri(message_mail)
+    mail_to_encrypt.attach(message_mail)
 
     if files:
         for file in files:
@@ -57,9 +61,10 @@ def _build_mail_to_encrypt(message: str, files: list) -> MIMEMultipart:
             mimetype = guessed_type.split('/')
 
             mail_attachment = MIMEBase(mimetype[0], mimetype[1])
+            mail_attachment.policy = policy.SMTPUTF8
             mail_attachment.set_payload(open(str(path.absolute()), 'rb').read())
             encoders.encode_base64(mail_attachment)
-            mail_attachment.add_header('Content-Disposition', "attachment; filename= %s" % path.name)
+            mail_attachment.add_header('Content-Disposition', "attachment", filename=path.name)
 
             mail_to_encrypt.attach(mail_attachment)
 
@@ -67,7 +72,8 @@ def _build_mail_to_encrypt(message: str, files: list) -> MIMEMultipart:
 
 
 def encrypt_mail(recipient: str, subject=_MAIL_DEFAULT_SUBJECT, message=_MAIL_DEFAULT_MESSAGE,
-                 files=_MAIL_DEFAULT_ATTACHMENTS, gpgenv=_DEFAULT_GPG_ENV, trust=_DEFAULT_GPG_TRUST) -> MIMEMultipart:
+                 files=_MAIL_DEFAULT_ATTACHMENTS, gpgenv=_DEFAULT_GPG_ENV,
+                 trust=_DEFAULT_GPG_TRUST, signer=None, sign_password=None) -> MIMEMultipart:
     """
     Build and encrypt an email using the given parameters.
 
@@ -77,11 +83,38 @@ def encrypt_mail(recipient: str, subject=_MAIL_DEFAULT_SUBJECT, message=_MAIL_DE
     :param files: A list of str containing the names of mail attachments.
     :param gpgenv: The path to the GPG environment.
     :param trust: Whether to always trust or not the recipient key.
+    :param signer: The key ID used to sign the email.
+    :param sign_password: The password of the signing key.
     :return: The MIMEMultipart corresponding to the encrypted email.
     """
     gpg = gnupg.GPG(gnupghome=gpgenv)
 
     mail_to_encrypt = _build_mail_to_encrypt(message, files)
+
+    if signer:
+        signature = gpg.sign(str(mail_to_encrypt), keyid=signer, passphrase=sign_password, detach=True)
+
+        # Values defined from gnupg/common/openpgpdefs.h and  gnupg/tests/openpgp/mds.scm
+        hash_mapping = {'1': 'md5',
+                        '2': 'sha1',
+                        '3': 'ripemd160',
+                        '8': 'sha256',
+                        '9': 'sha384',
+                        '10': 'sha512',
+                        '11': 'sha224'
+                        }
+
+        signed_mail = MIMEMultipart('signed',
+                                    micalg='pgp-%s' % hash_mapping[signature.hash_algo],
+                                    protocol='application/pgp-signature')
+        signed_mail.policy = policy.SMTPUTF8
+        signed_mail.attach(mail_to_encrypt)
+
+        signature_part = MIMEApplication(str(signature), 'pgp-signature', encoders.encode_noop, name='signature.asc')
+        signature_part.policy = policy.SMTPUTF8
+
+        signed_mail.attach(signature_part)
+        mail_to_encrypt = signed_mail
 
     encrypted_mail = gpg.encrypt(str(mail_to_encrypt), recipient, always_trust=trust)
 
@@ -90,29 +123,55 @@ def encrypt_mail(recipient: str, subject=_MAIL_DEFAULT_SUBJECT, message=_MAIL_DE
         sys.exit(2)
 
     mail_to_send = MIMEMultipart('encrypted', protocol='application/pgp-encrypted')
-    mail_to_send.attach(MIMEApplication("Version: 1", 'pgp-encrypted', encoders.encode_7or8bit))
-    mail_to_send.attach(MIMEApplication(str(encrypted_mail),
-                                        'octet-stream',
-                                        encoders.encode_7or8bit,
-                                        name='encrypted.asc'))
+    mail_to_send.policy = policy.SMTPUTF8
     mail_to_send.add_header('Subject', subject)
+
+    version_part = MIMEApplication("Version: 1", 'pgp-encrypted', encoders.encode_7or8bit)
+    version_part.policy = policy.SMTPUTF8
+    mail_to_send.attach(version_part)
+
+    content_part = MIMEApplication(str(encrypted_mail),
+                                   'octet-stream',
+                                   encoders.encode_7or8bit,
+                                   name='encrypted.asc')
+    content_part.policy = policy.SMTPUTF8
+    mail_to_send.attach(content_part)
 
     return mail_to_send
 
 
 def _encrypt_mail(options: Values) -> None:
     """
-    Wrapper for the multiple arguments "encrypt_mail" function. Print it's result in the standard output.
+    Wrapper for the multiple arguments "encrypt_mail" function.
+    Print it's result in the standard output.
+
+    Select the right method to get the signing key's password (file or argument).
 
     :param options:
     :return:
     """
+
+    sign_password = None
+
+    if options.pass_file:
+        path = Path(options.pass_file)
+
+        if path.is_file():
+            sign_password = open(options.pass_file, 'r').readline().rstrip('\n')
+        else:
+            print("Can't read the '%s' file." % options.pass_file, file=sys.stderr)
+            sys.exit(3)
+    elif options.sign_password:
+        sign_password = options.sign_password
+
     print(str(encrypt_mail(options.recipient,
                            options.subject,
                            options.message,
                            options.files,
                            options.gpgenv,
-                           options.trust)))
+                           options.trust,
+                           options.signer,
+                           sign_password)))
 
 
 def _import_key(options: Values) -> None:
@@ -187,6 +246,17 @@ def main():
                       dest='trust',
                       action='store_true',
                       help='Trust recipient key, regardless of actual trust level.')
+    parser.add_option('-c', '--sign',
+                      dest='signer',
+                      help='The optional key ID used to sign the email.')
+    parser.add_option('-p', '--password-file',
+                      dest='pass_file',
+                      help='Path to a file containing a single line corresponding to '
+                           'the selected signature key passphrase. Take precedence on --password.')
+    parser.add_option('--password',
+                      dest='sign_password',
+                      help='The password of the signing key. USE FOR TESTS ONLY.'
+                      )
 
     (options, args) = parser.parse_args()
 

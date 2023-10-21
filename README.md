@@ -6,27 +6,27 @@ A simple script to generate a GPG encrypted/signed email.
 ## Documentation
 
 ~~~~
-Generate an encrypted email using GPG.
-
-Options:
-  -h, --help            show this help message and exit
-  -e GPGENV, --env=GPGENV
+Generate an encrypted email using GPG.                                        
+                                                                              
+Options:                                                                      
+  -h, --help            show this help message and exit                       
+  -e GPGENV, --env=GPGENV                                                     
                         The path to the gnupg environment directory, where the
-                        keys are stored. (./gpgenv)
+                        keys are stored.                                      
   -l, --list            List keys in the gnupg environment.
   -i IMPORT_KEY, --import=IMPORT_KEY
                         The public key file to import in the gnupg
                         environment.
   -d RECIPIENT, --dest=RECIPIENT, --email-to=RECIPIENT
                         The recipient to encrypt for, can use key identifier.
-  -f FILES, --send=FILES, --file=FILES
+  -f FILES, --file=FILES
                         The file to add as an attachment. Can be provided
                         multiple times to add multiple files.
   -s SUBJECT, --subject=SUBJECT
-                        The email subject. (No subject)
+                        The email subject.
   -m MESSAGE, --message=MESSAGE
                         The text message to send. If not provided or equals
-                        --, read standard input. (--)
+                        --, read standard input.
   -t, --trust           Trust recipient key, regardless of actual trust level.
   -c SIGNER, --sign=SIGNER
                         The optional key ID used to sign the email.
@@ -36,6 +36,10 @@ Options:
                         precedence on --password.
   --password=SIGN_PASSWORD
                         The password of the signing key. USE FOR TESTS ONLY.
+  --send                Send an email using the provided SMTP parameters.
+  --config=CONFIG       Path to a config file. Mandatory if --send is used, as
+                        it should contains the SMTP params.
+
 ~~~~
 
 ## Examples

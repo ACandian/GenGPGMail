@@ -53,3 +53,20 @@ Now, you have a private key for alice@example.com in ./gpgenv, and the related p
 `./gen_gpg_mail.py -m 'This is an encrypted message to bob@example.com.' -d bob@example.com -c alice@example.com -p password.txt`
 
 If you don't have trust in Bob's key, just add -t to the command line.
+
+## Configuration file example
+
+```json
+{
+  "recipient": "Recipient GPG Public Key",
+  "signer": "Signing Key ID",
+  "sign_password": "Signing Key Password",
+  "smtp_server": "your.smtp.server.domain",
+  "smtp_port": 587,
+  "smtp_starttls": true,
+  "smtp_user": "SMTP User",
+  "smtp_password": "SMTP Password",
+  "smtp_from": "From: mail header",
+  "smtp_to": "To: mail header"
+}
+```

@@ -7,10 +7,11 @@ It's dirty and assume that almost everything goes fine, but do the job.
 
 To use the script, you need to install the Python GPG library, either by pip or system-wide.
 On Debian, python3-gnupg.
-With pip, python-gnupg (use with version 0.4.3).
+With pip, python-gnupg (tested with version 0.5.4).
 """
 import json
 import mimetypes
+import os.path
 import sys
 from email import encoders, policy
 from email.mime.application import MIMEApplication
@@ -299,6 +300,13 @@ def main():
                       help='Path to a config file. Mandatory if --send is used, as it should contains the SMTP params.')
 
     (options, args) = parser.parse_args()
+
+    if options.gpgenv:
+        if not os.path.exists(options.gpgenv):
+            os.makedirs(options.gpgenv)
+        elif not os.path.isdir(options.gpgenv):
+            print("The gpgenv argument should be a directory.")
+            exit(1)
 
     if options.list:
         _list_keys(options)

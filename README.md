@@ -54,6 +54,9 @@ Now, you have a private key for alice@example.com in ./gpgenv, and the related p
 
 If you don't have trust in Bob's key, just add -t to the command line.
 
+*If you don't trust Bob's key, you might have an "invalid recipient" error, so check if you trusted the recipient key or with the "-t" parameter.*
+
+
 ## Configuration file example
 
 ```json
@@ -70,3 +73,6 @@ If you don't have trust in Bob's key, just add -t to the command line.
   "smtp_to": "To: mail header"
 }
 ```
+
+## Credit
+- vsajip, who maintain the python-gnupg library : https://github.com/vsajip/python-gnupg

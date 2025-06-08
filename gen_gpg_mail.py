@@ -14,6 +14,7 @@ import mimetypes
 import os.path
 import sys
 from email import encoders, policy
+from email.header import Header
 from email.mime.application import MIMEApplication
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -38,7 +39,7 @@ _DEFAULT_PARAMS = {
 
 def _build_mail_to_encrypt(message: str, files: list) -> MIMEMultipart:
     """
-    Create the MIMEMultipart mail containing the text message and the potentials attachments.
+    Create the MIMEMultipart mail containing the text message and the potential attachments.
 
     :param message: The text message of the encrypted email.
     :param files: The files to attach and encrypt.
@@ -134,7 +135,6 @@ def encrypt_mail(**in_params) -> MIMEMultipart:
         sys.exit(2)
 
     mail_to_send = MIMEMultipart('encrypted', protocol='application/pgp-encrypted')
-    mail_to_send.policy = policy.SMTPUTF8
     mail_to_send.add_header('Subject', params['subject'])
 
     version_part = MIMEApplication("Version: 1", 'pgp-encrypted', encoders.encode_7or8bit)
